@@ -14,6 +14,7 @@ The core experience is:
 - The selected mark animates into place with an elastic scale effect.
 - The CPU chooses a response move using simple tactical logic.
 - Winning cells glow in the winner's color.
+- The first player interaction unlocks MIDI-style synth music and sound effects.
 - The end screen appears with replay and install CTAs.
 - The install CTA is routed through `@smoud/playable-sdk`.
 
@@ -23,6 +24,7 @@ The core experience is:
 - `@smoud/playable-sdk` - playable lifecycle, resize, pause/resume, install CTA, finish event
 - `@smoud/playable-scripts` - local dev server and production playable build
 - `typescript` - project source code
+- Web Audio API - procedural MIDI-style music and sound effects
 - `css` - HUD, CRT overlay, end screen, responsive CTA layout
 
 ## Scripts
@@ -93,6 +95,7 @@ Contains the playable itself:
 - raycast pointer interaction
 - mark placement animation
 - win/draw detection
+- procedural audio engine
 - end screen behavior
 - SDK install CTA call
 
@@ -108,6 +111,7 @@ Defines the visual presentation:
 - neon magenta/cyan text glow
 - app icon
 - replay/install buttons
+- mute button
 - responsive CTA layout
 
 `src/index.html`
@@ -175,6 +179,22 @@ sdk.finish();
 
 This keeps CTA and completion behavior compatible with the Smoud playable pipeline.
 
+## Audio
+
+The project uses a self-contained Web Audio synth instead of external audio files. This keeps the playable compatible with single-file ad builds and avoids remote asset requests.
+
+Audio features:
+
+- looping MIDI-style chip music
+- player move sound
+- CPU move sound
+- win, lose, and draw stingers
+- UI blip for replay/install/mute actions
+- bottom-right mute button
+- SDK volume support through the `volume` lifecycle event
+
+Browser autoplay rules require audio to start from a user gesture. For that reason, the music and sound effects are unlocked on the first player tap or CTA interaction.
+
 ## Editing Guide
 
 To change the game title or store URLs, edit:
@@ -197,6 +217,7 @@ Useful sections in `src/Game.ts`:
 - `placeMark()` - move placement and animation
 - `cpuMove()` - CPU decision logic
 - `endGame()` - win/draw result handling
+- `MidiAudioEngine` - procedural music and sound effects
 - `handleInstallClick()` - install CTA behavior
 
 To change visual styling, edit:
@@ -224,4 +245,5 @@ dist/Cyberpunk Tic-Tac-Toe_Cyberpunk Tic-Tac-Toe_v1_20260518_en_Preview.html
 - The active project entry is `src/index.html`, not the root-level legacy standalone file.
 - The project no longer depends on CDN Three.js imports or remote Google Fonts.
 - Template sample assets were removed because the current playable is fully generated through Three.js geometry and CSS.
+- Audio is generated at runtime with Web Audio and starts only after a user gesture.
 - `npm install` may report audit findings from the template dependency tree. Review dependency updates carefully before applying automated fixes.

@@ -5,6 +5,7 @@ type Player = 'X' | 'O';
 type CellValue = Player | null;
 type Result = Player | 'DRAW';
 type AnimationStep = (time: number) => boolean;
+type OscillatorKind = OscillatorType;
 
 const WIN_LINES = [
   [0, 1, 2],
@@ -17,6 +18,191 @@ const WIN_LINES = [
   [2, 4, 6],
 ];
 
+class MidiAudioEngine {
+  private context: AudioContext | null = null;
+  private master: GainNode | null = null;
+  private musicBus: GainNode | null = null;
+  private sfxBus: GainNode | null = null;
+  private started = false;
+  private muted = false;
+  private nextStepAt = 0;
+  private stepIndex = 0;
+  private readonly stepSeconds = 60 / 132 / 2;
+  private readonly melody: Array<number | null> = [76, null, 79, null, 83, 81, 79, null, 74, null, 76, 79, 81, null, 79, null];
+  private readonly bass: Array<number | null> = [40, null, 40, null, 47, null, 47, null, 38, null, 38, null, 45, null, 45, null];
+
+  public unlock(): void {
+    const audioContext = this.getContext();
+    if (!audioContext) return;
+
+    if (audioContext.state === 'suspended') {
+      audioContext.resume().catch((error) => console.log('Audio resume failed', error));
+    }
+
+    if (!this.started) {
+      this.started = true;
+      this.nextStepAt = audioContext.currentTime + 0.03;
+    }
+  }
+
+  public update(): void {
+    if (!this.context || !this.started || this.muted) return;
+
+    const lookahead = this.context.currentTime + 0.14;
+    while (this.nextStepAt < lookahead) {
+      this.scheduleMusicStep(this.nextStepAt, this.stepIndex);
+      this.nextStepAt += this.stepSeconds;
+      this.stepIndex = (this.stepIndex + 1) % this.melody.length;
+    }
+  }
+
+  public setMuted(nextMuted: boolean): void {
+    this.muted = nextMuted;
+    if (!this.master || !this.context) return;
+    this.master.gain.setTargetAtTime(nextMuted ? 0 : 0.34, this.context.currentTime, 0.025);
+  }
+
+  public toggleMuted(): boolean {
+    this.unlock();
+    this.setMuted(!this.muted);
+    return this.muted;
+  }
+
+  public isMuted(): boolean {
+    return this.muted;
+  }
+
+  public playMove(player: Player): void {
+    const audioContext = this.context;
+    if (!audioContext || !this.started || this.muted) return;
+
+    if (player === 'X') {
+      this.playArp([76, 83], 0.045, 0.13, 'square', 0.16);
+    } else {
+      this.playArp([67, 74], 0.055, 0.12, 'triangle', 0.13);
+    }
+  }
+
+  public playWin(result: Result): void {
+    const audioContext = this.context;
+    if (!audioContext || !this.started || this.muted) return;
+
+    if (result === 'X') {
+      this.playArp([76, 79, 83, 88], 0.07, 0.24, 'square', 0.2);
+      this.noiseHit(audioContext.currentTime + 0.08, 0.22, 0.12);
+    } else if (result === 'O') {
+      this.playArp([74, 71, 67, 62], 0.08, 0.22, 'sawtooth', 0.16);
+      this.noiseHit(audioContext.currentTime + 0.04, 0.18, 0.09);
+    } else {
+      this.playArp([64, 65, 64], 0.12, 0.2, 'triangle', 0.13);
+    }
+  }
+
+  public playUiBlip(): void {
+    const audioContext = this.context;
+    if (!audioContext || !this.started || this.muted) return;
+    this.playTone(91, audioContext.currentTime, 0.08, 'square', 0.1, this.sfxBus);
+  }
+
+  private getContext(): AudioContext | null {
+    if (this.context) return this.context;
+
+    const AudioContextCtor =
+      window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return null;
+
+    this.context = new AudioContextCtor();
+    this.master = this.context.createGain();
+    this.musicBus = this.context.createGain();
+    this.sfxBus = this.context.createGain();
+
+    this.master.gain.value = this.muted ? 0 : 0.34;
+    this.musicBus.gain.value = 0.18;
+    this.sfxBus.gain.value = 0.5;
+
+    this.musicBus.connect(this.master);
+    this.sfxBus.connect(this.master);
+    this.master.connect(this.context.destination);
+
+    return this.context;
+  }
+
+  private scheduleMusicStep(time: number, step: number): void {
+    const lead = this.melody[step];
+    const bass = this.bass[step];
+
+    if (lead !== null) {
+      this.playTone(lead, time, this.stepSeconds * 0.75, 'square', 0.09, this.musicBus);
+      this.playTone(lead + 12, time + 0.012, this.stepSeconds * 0.45, 'triangle', 0.025, this.musicBus);
+    }
+
+    if (bass !== null && step % 2 === 0) {
+      this.playTone(bass, time, this.stepSeconds * 1.15, 'sawtooth', 0.07, this.musicBus);
+    }
+
+    if (step % 4 === 2) {
+      this.noiseHit(time, 0.035, 0.025);
+    }
+  }
+
+  private playArp(notes: number[], spacing: number, duration: number, type: OscillatorKind, volume: number): void {
+    if (!this.context) return;
+    notes.forEach((note, index) => {
+      this.playTone(note, this.context!.currentTime + index * spacing, duration, type, volume, this.sfxBus);
+    });
+  }
+
+  private playTone(
+    midiNote: number,
+    startAt: number,
+    duration: number,
+    type: OscillatorKind,
+    volume: number,
+    destination: GainNode | null,
+  ): void {
+    if (!this.context || !destination) return;
+
+    const osc = this.context.createOscillator();
+    const gain = this.context.createGain();
+    const frequency = 440 * 2 ** ((midiNote - 69) / 12);
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, startAt);
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(Math.max(volume, 0.0001), startAt + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(startAt);
+    osc.stop(startAt + duration + 0.03);
+  }
+
+  private noiseHit(startAt: number, duration: number, volume: number): void {
+    if (!this.context || !this.sfxBus) return;
+
+    const sampleRate = this.context.sampleRate;
+    const frameCount = Math.max(1, Math.floor(sampleRate * duration));
+    const buffer = this.context.createBuffer(1, frameCount, sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < frameCount; i += 1) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / frameCount);
+    }
+
+    const source = this.context.createBufferSource();
+    const gain = this.context.createGain();
+    gain.gain.setValueAtTime(volume, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(this.sfxBus);
+    source.start(startAt);
+    source.stop(startAt + duration);
+  }
+}
+
 export class Game {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
@@ -28,8 +214,10 @@ export class Game {
   private readonly scoreP1: HTMLSpanElement;
   private readonly scoreCPU: HTMLSpanElement;
   private readonly statusMessage: HTMLDivElement;
+  private readonly muteButton: HTMLButtonElement;
   private readonly endScreen: HTMLDivElement;
   private readonly resultText: HTMLDivElement;
+  private readonly audio = new MidiAudioEngine();
   private readonly boardGroup = new THREE.Group();
   private readonly cityGroup = new THREE.Group();
   private readonly raycaster = new THREE.Raycaster();
@@ -84,6 +272,7 @@ export class Game {
     this.scoreP1 = ui.scoreP1;
     this.scoreCPU = ui.scoreCPU;
     this.statusMessage = ui.statusMessage;
+    this.muteButton = ui.muteButton;
     this.endScreen = ui.endScreen;
     this.resultText = ui.resultText;
 
@@ -147,7 +336,8 @@ export class Game {
   }
 
   public volume(value: number): void {
-    console.log(`Volume changed to: ${value}`);
+    this.audio.setMuted(value <= 0);
+    this.updateMuteButton();
   }
 
   public finish(): void {
@@ -161,6 +351,7 @@ export class Game {
     scoreP1: HTMLSpanElement;
     scoreCPU: HTMLSpanElement;
     statusMessage: HTMLDivElement;
+    muteButton: HTMLButtonElement;
     endScreen: HTMLDivElement;
     resultText: HTMLDivElement;
   } {
@@ -178,6 +369,18 @@ export class Game {
     const canvasContainer = document.createElement('div');
     canvasContainer.id = 'canvas-container';
     root.appendChild(canvasContainer);
+
+    const muteButton = document.createElement('button');
+    muteButton.className = 'mute-button';
+    muteButton.type = 'button';
+    muteButton.textContent = 'SND';
+    muteButton.setAttribute('aria-label', 'Toggle sound');
+    muteButton.addEventListener('pointerdown', () => {
+      const muted = this.audio.toggleMuted();
+      this.updateMuteButton(muted);
+      this.audio.playUiBlip();
+    });
+    root.appendChild(muteButton);
 
     const p1 = this.createHudPanel('top-left', 'PLAYER 1');
     const p1Value = document.createElement('div');
@@ -248,7 +451,7 @@ export class Game {
     root.appendChild(endScreen);
     document.body.appendChild(root);
 
-    return { root, canvasContainer, turnIndicator, scoreP1, scoreCPU, statusMessage, endScreen, resultText };
+    return { root, canvasContainer, turnIndicator, scoreP1, scoreCPU, statusMessage, muteButton, endScreen, resultText };
   }
 
   private createHudPanel(positionClass: string, title: string): HTMLDivElement {
@@ -459,6 +662,7 @@ export class Game {
     const index = object.userData.index as number | undefined;
 
     if (index !== undefined && this.board[index] === null) {
+      this.audio.unlock();
       this.autoEndAt = 0;
       this.placeMark(index, 'X');
     }
@@ -504,6 +708,7 @@ export class Game {
     this.scene.add(mesh);
     this.marks.push(mesh);
     this.animateScale(mesh, 1, 600, true);
+    this.audio.playMove(player);
     this.screenShake = player === 'X' ? 0.2 : 0.14;
 
     if (this.checkWinResult()) return;
@@ -602,11 +807,14 @@ export class Game {
       this.screenShake = 0.5;
     }
 
+    this.audio.playWin(result);
     this.statusMessage.textContent = 'OPENING DOWNLOAD PROTOCOL...';
     this.pendingEndScreenAt = performance.now() + 1200;
   }
 
   private resetGame(): void {
+    this.audio.unlock();
+    this.audio.playUiBlip();
     this.endScreen.classList.remove('visible');
     this.board = Array(9).fill(null);
     this.isGameOver = false;
@@ -627,6 +835,8 @@ export class Game {
   }
 
   private handleInstallClick(): void {
+    this.audio.unlock();
+    this.audio.playUiBlip();
     this.resultText.textContent = 'LOADING PROTOCOL...';
     this.resultText.className = 'cyan-glow';
     try {
@@ -646,6 +856,11 @@ export class Game {
         console.log('Finish call failed', error);
       }
     }
+  }
+
+  private updateMuteButton(muted = this.audio.isMuted()): void {
+    this.muteButton.textContent = muted ? 'MUTE' : 'SND';
+    this.muteButton.classList.toggle('muted', muted);
   }
 
   private updateUI(): void {
@@ -722,6 +937,7 @@ export class Game {
       const time = performance.now();
       this.clock.getDelta();
       this.update(time);
+      this.audio.update();
     }
     this.renderer.render(this.scene, this.camera);
   }

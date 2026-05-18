@@ -106,11 +106,40 @@ canvas {
 }
 
 .bottom-center {
-  bottom: 20px;
+  bottom: 74px;
   left: 50%;
   max-width: min(330px, calc(100vw - 40px));
   text-align: center;
   transform: translateX(-50%);
+}
+
+.mute-button {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 30;
+  min-width: 58px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 2px solid var(--cyan);
+  background: rgba(10, 10, 15, 0.72);
+  box-shadow:
+    0 0 12px rgba(0, 255, 255, 0.5),
+    inset 0 0 12px rgba(0, 255, 255, 0.18);
+  color: var(--cyan);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-shadow: 0 0 5px var(--cyan);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+.mute-button.muted {
+  border-color: #777;
+  color: #aaa;
+  text-shadow: none;
+  box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.08);
 }
 
 .hud-title {
