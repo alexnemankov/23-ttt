@@ -1,0 +1,33 @@
+{
+  "name": "cyberpunk-tic-tac-toe-playable",
+  "version": "1.0.0",
+  "description": "Cyberpunk tic-tac-toe playable ad built with Three.js and @smoud/playable-sdk",
+  "scripts": {
+    "dev": "playable-scripts dev",
+    "build": "playable-scripts build"
+  },
+  "keywords": [
+    "playable",
+    "ads",
+    "template",
+    "three",
+    "threejs",
+    "webgl",
+    "3d",
+    "typescript",
+    "game"
+  ],
+  "author": "",
+  "dependencies": {
+    "@smoud/playable-sdk": "^1.0.24",
+    "three": "^0.174.0"
+  },
+  "devDependencies": {
+    "@smoud/playable-scripts": "^1.1.4",
+    "@types/three": "^0.174.0",
+    "prettier": "^2.7.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

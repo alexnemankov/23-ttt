@@ -1,0 +1,935 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Playable Ad - Cyberpunk Tic-Tac-Toe</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --magenta: #ff00ff;
+        --cyan: #00ffff;
+        --purple: #8b5cf6;
+        --dark: #0a0a0f;
+        --font: "Press Start 2P", monospace;
+      }
+
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--dark);
+        overflow: hidden;
+        font-family: var(--font);
+        color: #fff;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+      }
+
+      #canvas-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+      }
+
+      canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+        /* CRITICAL: This gives the chunky PS1 pixelated look when scaling up low-res canvas */
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      .crt-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 10;
+        background:
+          linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+          linear-gradient(
+            90deg,
+            rgba(255, 0, 0, 0.03),
+            rgba(0, 255, 0, 0.01),
+            rgba(0, 0, 255, 0.03)
+          );
+        background-size:
+          100% 4px,
+          3px 100%;
+        box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.9);
+      }
+
+      .noise {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 11;
+        opacity: 0.05;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+      }
+
+      .hud {
+        position: absolute;
+        z-index: 20;
+        padding: 15px;
+        pointer-events: none;
+        text-shadow:
+          2px 0 red,
+          -2px 0 blue; /* Chromatic aberration */
+      }
+
+      .hud-panel {
+        background: rgba(10, 10, 15, 0.8);
+        border: 2px solid var(--purple);
+        padding: 10px;
+        /* Angular sci-fi corners */
+        clip-path: polygon(
+          10px 0,
+          100% 0,
+          100% calc(100% - 10px),
+          calc(100% - 10px) 100%,
+          0 100%,
+          0 10px
+        );
+        box-shadow: 0 0 10px var(--purple);
+      }
+
+      .top-left {
+        top: 10px;
+        left: 10px;
+      }
+      .top-right {
+        top: 10px;
+        right: 10px;
+        text-align: right;
+      }
+      .top-center {
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+      }
+
+      .bottom-center {
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        font-size: 10px;
+        color: #aaa;
+      }
+
+      .hud-title {
+        font-size: 10px;
+        color: #aaa;
+        margin-bottom: 5px;
+      }
+      .hud-value {
+        font-size: 14px;
+      }
+      .magenta-glow {
+        color: var(--magenta);
+        text-shadow:
+          0 0 5px var(--magenta),
+          2px 0 red,
+          -2px 0 blue;
+      }
+      .cyan-glow {
+        color: var(--cyan);
+        text-shadow:
+          0 0 5px var(--cyan),
+          2px 0 red,
+          -2px 0 blue;
+      }
+
+      #end-screen {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.5s ease;
+        backdrop-filter: blur(4px);
+      }
+
+      #end-screen.visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #result-text {
+        font-size: 32px;
+        margin-bottom: 40px;
+        text-align: center;
+        line-height: 1.5;
+        text-shadow:
+          0 0 15px currentColor,
+          3px 0 red,
+          -3px 0 blue;
+      }
+
+      .cta-container {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        width: 80%;
+        max-width: 300px;
+      }
+
+      button {
+        font-family: var(--font);
+        font-size: 14px;
+        padding: 20px;
+        background: transparent;
+        border: 2px solid;
+        color: #fff;
+        cursor: pointer;
+        text-transform: uppercase;
+        clip-path: polygon(
+          15px 0,
+          100% 0,
+          100% calc(100% - 15px),
+          calc(100% - 15px) 100%,
+          0 100%,
+          0 15px
+        );
+        transition: all 0.2s;
+        outline: none;
+      }
+
+      button:active {
+        transform: scale(0.95);
+      }
+
+      .btn-play {
+        border-color: var(--cyan);
+        background: rgba(0, 255, 255, 0.1);
+        box-shadow: inset 0 0 15px rgba(0, 255, 255, 0.3);
+        text-shadow: 0 0 5px var(--cyan);
+      }
+      .btn-play:hover {
+        background: rgba(0, 255, 255, 0.3);
+      }
+
+      .btn-install {
+        border-color: var(--magenta);
+        background: var(--magenta);
+        color: #000;
+        font-weight: bold;
+        text-shadow: none;
+        box-shadow: 0 0 20px var(--magenta);
+        animation: pulse 1.5s infinite alternate;
+      }
+      .btn-install:hover {
+        background: #ff4dff;
+      }
+
+      @keyframes pulse {
+        from {
+          box-shadow: 0 0 10px var(--magenta);
+        }
+        to {
+          box-shadow: 0 0 25px var(--magenta);
+        }
+      }
+
+      @media (min-width: 768px) {
+        .cta-container {
+          flex-direction: row;
+          max-width: 600px;
+        }
+        button {
+          flex: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="crt-overlay"></div>
+    <div class="noise"></div>
+
+    <div id="canvas-container"></div>
+
+    <div class="hud top-left hud-panel">
+      <div class="hud-title">PLAYER 1</div>
+      <div class="hud-value magenta-glow">
+        [ X ] : <span id="score-p1">0</span>
+      </div>
+    </div>
+
+    <div class="hud top-center hud-panel">
+      <div class="hud-title">TURN</div>
+      <div class="hud-value" id="turn-indicator">P1 [X]</div>
+    </div>
+
+    <div class="hud top-right hud-panel">
+      <div class="hud-title">CPU</div>
+      <div class="hud-value cyan-glow">
+        <span id="score-cpu">0</span> : [ O ]
+      </div>
+    </div>
+
+    <div class="hud bottom-center hud-panel">
+      <div class="hud-title">SYS_MSG</div>
+      <div class="hud-value" style="font-size: 12px">AWAITING INPUT...</div>
+    </div>
+
+    <div id="end-screen">
+      <div id="result-text" class="magenta-glow">YOU WIN</div>
+      <div class="cta-container">
+        <button class="btn-play" onclick="resetGame()">PLAY AGAIN</button>
+        <button class="btn-install" onclick="handleInstallClick()">
+          INSTALL NOW
+        </button>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+
+      // --- GAME STATE ---
+      const gameState = {
+        board: Array(9).fill(null), // null, 'X', or 'O'
+        turn: "X", // 'X' is Player, 'O' is CPU
+        isGameOver: false,
+        scoreP1: 0,
+        scoreCPU: 0,
+        cells: [], // 3D meshes of the board
+        marks: [], // 3D meshes of X and O
+        ghostMark: null, // Holographic preview
+        hoveredIndex: -1,
+        animations: [], // Custom animation queue
+      };
+
+      const WIN_LINES = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8], // Rows
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8], // Cols
+        [0, 4, 8],
+        [2, 4, 6], // Diagonals
+      ];
+
+      // --- SCENE SETUP ---
+      const container = document.getElementById("canvas-container");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a0a0f);
+      scene.fog = new THREE.FogExp2(0x0a0a0f, 0.04); // Thick dark fog
+
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        100,
+      );
+      // Tilted isometric-ish perspective
+      let baseCameraPos = new THREE.Vector3(0, 6, 6);
+      camera.position.copy(baseCameraPos);
+      camera.lookAt(0, 0, 0);
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: false,
+        powerPreference: "high-performance",
+      });
+      renderer.setPixelRatio(1); // Force 1x pixel ratio for chunkiness
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      // Calculate low-resolution scale
+      const INTERNAL_WIDTH = 426; // ~240p 16:9 feel
+      function resizeRenderer() {
+        const aspect = window.innerWidth / window.innerHeight;
+        renderer.setSize(INTERNAL_WIDTH, INTERNAL_WIDTH / aspect, false);
+        camera.aspect = aspect;
+        camera.updateProjectionMatrix();
+      }
+      resizeRenderer();
+      container.appendChild(renderer.domElement);
+      window.addEventListener("resize", resizeRenderer);
+
+      // --- LIGHTING ---
+      const ambientLight = new THREE.AmbientLight(0x222233, 2.0);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0x5555aa, 2.0);
+      dirLight.position.set(5, 10, 5);
+      scene.add(dirLight);
+
+      const magentaLight = new THREE.PointLight(0xff00ff, 50, 15);
+      magentaLight.position.set(-5, 2, 0);
+      scene.add(magentaLight);
+
+      const cyanLight = new THREE.PointLight(0x00ffff, 50, 15);
+      cyanLight.position.set(5, 2, 0);
+      scene.add(cyanLight);
+
+      // --- MATERIALS (PS1 Vibe) ---
+      const matBoard = new THREE.MeshLambertMaterial({
+        color: 0x1a1a24,
+        emissive: 0x050510,
+        wireframe: false,
+      });
+
+      const matBoardHover = new THREE.MeshLambertMaterial({
+        color: 0x2a2a3a,
+        emissive: 0x1a0a2a,
+      });
+
+      const matX = new THREE.MeshBasicMaterial({ color: 0xff00ff }); // Neon Magenta
+      const matO = new THREE.MeshBasicMaterial({ color: 0x00ffff }); // Neon Cyan
+      const matGhost = new THREE.MeshBasicMaterial({
+        color: 0xff00ff,
+        transparent: true,
+        opacity: 0.2,
+        wireframe: true,
+      });
+
+      // --- SCENE OBJECTS ---
+      const boardGroup = new THREE.Group();
+      scene.add(boardGroup);
+
+      const CELL_SIZE = 1.4;
+      const CELL_GAP = 0.15;
+      const OFFSET = CELL_SIZE + CELL_GAP;
+
+      const cellGeo = new THREE.BoxGeometry(CELL_SIZE, 0.2, CELL_SIZE);
+
+      // Generate 3x3 grid
+      for (let i = 0; i < 9; i++) {
+        const x = (i % 3) - 1;
+        const z = Math.floor(i / 3) - 1;
+
+        const cell = new THREE.Mesh(cellGeo, matBoard);
+        cell.position.set(x * OFFSET, 0, z * OFFSET);
+        cell.userData = { index: i };
+
+        // Add slight bevel effect using an inner wireframe
+        const edges = new THREE.EdgesGeometry(cellGeo);
+        const line = new THREE.LineSegments(
+          edges,
+          new THREE.LineBasicMaterial({
+            color: 0x333344,
+            transparent: true,
+            opacity: 0.5,
+          }),
+        );
+        cell.add(line);
+
+        boardGroup.add(cell);
+        gameState.cells.push(cell);
+      }
+
+      // Add a base plate
+      const basePlateGeo = new THREE.BoxGeometry(
+        OFFSET * 3 + 0.5,
+        0.5,
+        OFFSET * 3 + 0.5,
+      );
+      const basePlateMat = new THREE.MeshLambertMaterial({
+        color: 0x0a0a0f,
+        emissive: 0x050505,
+      });
+      const basePlate = new THREE.Mesh(basePlateGeo, basePlateMat);
+      basePlate.position.y = -0.4;
+      boardGroup.add(basePlate);
+
+      const cityGroup = new THREE.Group();
+      scene.add(cityGroup);
+      const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
+      const buildingMat = new THREE.MeshLambertMaterial({ color: 0x05050a });
+
+      // Instanced mesh for performance
+      const cityCount = 150;
+      const cityMesh = new THREE.InstancedMesh(
+        buildingGeo,
+        buildingMat,
+        cityCount,
+      );
+      const dummy = new THREE.Object3D();
+
+      for (let i = 0; i < cityCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 10 + Math.random() * 20;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const height = 2 + Math.random() * 15;
+
+        dummy.position.set(x, height / 2 - 2, z);
+        dummy.scale.set(1 + Math.random() * 2, height, 1 + Math.random() * 2);
+        dummy.rotation.y = Math.random() * Math.PI;
+        dummy.updateMatrix();
+        cityMesh.setMatrixAt(i, dummy.matrix);
+      }
+      cityGroup.add(cityMesh);
+
+      // Add particle "window lights"
+      const particlesGeo = new THREE.BufferGeometry();
+      const particlesCount = 200;
+      const posArray = new Float32Array(particlesCount * 3);
+      const colorsArray = new Float32Array(particlesCount * 3);
+
+      for (let i = 0; i < particlesCount * 3; i += 3) {
+        posArray[i] = (Math.random() - 0.5) * 40;
+        posArray[i + 1] = Math.random() * 10;
+        posArray[i + 2] = (Math.random() - 0.5) * 40;
+
+        // Randomly assign magenta or cyan to lights
+        if (Math.random() > 0.5) {
+          colorsArray[i] = 1;
+          colorsArray[i + 1] = 0;
+          colorsArray[i + 2] = 1; // Magenta
+        } else {
+          colorsArray[i] = 0;
+          colorsArray[i + 1] = 1;
+          colorsArray[i + 2] = 1; // Cyan
+        }
+      }
+      particlesGeo.setAttribute(
+        "position",
+        new THREE.BufferAttribute(posArray, 3),
+      );
+      particlesGeo.setAttribute(
+        "color",
+        new THREE.BufferAttribute(colorsArray, 3),
+      );
+      const particleMat = new THREE.PointsMaterial({
+        size: 0.1,
+        vertexColors: true,
+      });
+      const particlesMesh = new THREE.Points(particlesGeo, particleMat);
+      scene.add(particlesMesh);
+
+      // --- GEOMETRY FACTORIES ---
+      function createXMesh(material) {
+        const group = new THREE.Group();
+        const barGeo = new THREE.BoxGeometry(1.2, 0.2, 0.3);
+        const bar1 = new THREE.Mesh(barGeo, material);
+        bar1.rotation.y = Math.PI / 4;
+        const bar2 = new THREE.Mesh(barGeo, material);
+        bar2.rotation.y = -Math.PI / 4;
+        group.add(bar1);
+        group.add(bar2);
+        return group;
+      }
+
+      function createOMesh(material) {
+        // Low poly torus
+        const geo = new THREE.TorusGeometry(0.45, 0.15, 8, 12);
+        const mesh = new THREE.Mesh(geo, material);
+        mesh.rotation.x = Math.PI / 2;
+        return mesh;
+      }
+
+      // Initialize ghost mark
+      gameState.ghostMark = createXMesh(matGhost);
+      gameState.ghostMark.visible = false;
+      scene.add(gameState.ghostMark);
+
+      // --- INTERACTION / RAYCASTING ---
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+
+      function updatePointer(event) {
+        const rect = container.getBoundingClientRect();
+        let clientX = event.clientX;
+        let clientY = event.clientY;
+
+        if (event.touches && event.touches.length > 0) {
+          clientX = event.touches[0].clientX;
+          clientY = event.touches[0].clientY;
+        } else if (event.changedTouches && event.changedTouches.length > 0) {
+          clientX = event.changedTouches[0].clientX;
+          clientY = event.changedTouches[0].clientY;
+        }
+
+        if (clientX !== undefined && clientY !== undefined) {
+          pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+          pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        }
+      }
+
+      function handlePointerMove(event) {
+        if (gameState.isGameOver || gameState.turn === "O") {
+          gameState.ghostMark.visible = false;
+          resetHover();
+          return;
+        }
+
+        updatePointer(event);
+        scene.updateMatrixWorld(true);
+        raycaster.setFromCamera(pointer, camera);
+
+        const intersects = raycaster.intersectObjects(gameState.cells, false);
+
+        resetHover();
+        gameState.ghostMark.visible = false;
+
+        if (intersects.length > 0) {
+          let object = intersects[0].object;
+          if (object.type === "LineSegments") object = object.parent;
+
+          const index = object.userData.index;
+
+          if (index !== undefined && gameState.board[index] === null) {
+            gameState.hoveredIndex = index;
+            object.material = matBoardHover;
+
+            // Show ghost mark
+            const worldPos = new THREE.Vector3();
+            object.getWorldPosition(worldPos);
+            gameState.ghostMark.position.copy(worldPos);
+            gameState.ghostMark.position.y += 0.5;
+            gameState.ghostMark.visible = true;
+          }
+        }
+      }
+
+      function resetHover() {
+        if (gameState.hoveredIndex !== -1) {
+          gameState.cells[gameState.hoveredIndex].material = matBoard;
+          gameState.hoveredIndex = -1;
+        }
+      }
+
+      function handlePointerDown(event) {
+        if (gameState.isGameOver || gameState.turn === "O") return;
+
+        updatePointer(event);
+        scene.updateMatrixWorld(true);
+        raycaster.setFromCamera(pointer, camera);
+        const intersects = raycaster.intersectObjects(gameState.cells, false);
+
+        if (intersects.length > 0) {
+          let object = intersects[0].object;
+          if (object.type === "LineSegments") object = object.parent;
+
+          const index = object.userData.index;
+          if (index !== undefined && gameState.board[index] === null) {
+            placeMark(index, "X");
+          }
+        }
+      }
+
+      container.addEventListener("pointermove", handlePointerMove);
+      container.addEventListener("pointerdown", handlePointerDown);
+      container.addEventListener("click", handlePointerDown);
+
+      // --- GAME LOGIC ---
+
+      let screenShake = 0;
+
+      function animateScale(object, targetScale, duration, elastic = false) {
+        const startTime = performance.now();
+        const startScale = object.scale.x;
+
+        gameState.animations.push((time) => {
+          let progress = (time - startTime) / duration;
+          if (progress >= 1) progress = 1;
+
+          let ease = progress;
+          if (elastic) {
+            // Elastic ease out
+            const c4 = (2 * Math.PI) / 3;
+            ease =
+              progress === 1
+                ? 1
+                : Math.pow(2, -10 * progress) *
+                    Math.sin((progress * 10 - 0.75) * c4) +
+                  1;
+          } else {
+            ease = 1 - Math.pow(1 - progress, 3); // Cubic out
+          }
+
+          const s = startScale + (targetScale - startScale) * ease;
+          object.scale.set(s, s, s);
+
+          return progress < 1; // return false to remove from queue
+        });
+      }
+
+      function placeMark(index, player) {
+        gameState.board[index] = player;
+        gameState.ghostMark.visible = false;
+        resetHover();
+
+        // Create and position mesh
+        let mesh;
+        if (player === "X") {
+          mesh = createXMesh(matX);
+        } else {
+          mesh = createOMesh(matO);
+        }
+
+        const cell = gameState.cells[index];
+        const worldPos = new THREE.Vector3();
+        cell.getWorldPosition(worldPos);
+
+        mesh.position.copy(worldPos);
+        mesh.position.y += 0.3; // hover slightly above cell
+        mesh.scale.set(0, 0, 0); // start at 0 for animation
+
+        scene.add(mesh);
+        gameState.marks.push(mesh);
+
+        // Animate in
+        animateScale(mesh, 1, 600, true);
+        screenShake = 0.2; // Trigger small shake
+
+        // Check Win/Draw
+        if (checkWinResult()) return;
+
+        // Switch turn
+        gameState.turn = player === "X" ? "O" : "X";
+        updateUI();
+
+        if (gameState.turn === "O") {
+          setTimeout(cpuMove, 800 + Math.random() * 500); // CPU thinking delay
+        }
+      }
+
+      function cpuMove() {
+        if (gameState.isGameOver) return;
+
+        const board = gameState.board;
+        let move = -1;
+
+        // 1. Can CPU win?
+        move = findWinningMove(board, "O");
+
+        // 2. Must block Player?
+        if (move === -1) move = findWinningMove(board, "X");
+
+        // 3. Take center if available
+        if (move === -1 && board[4] === null) move = 4;
+
+        // 4. Take random available corner
+        if (move === -1) {
+          const corners = [0, 2, 6, 8].filter((i) => board[i] === null);
+          if (corners.length > 0)
+            move = corners[Math.floor(Math.random() * corners.length)];
+        }
+
+        // 5. Take random available edge
+        if (move === -1) {
+          const edges = [1, 3, 5, 7].filter((i) => board[i] === null);
+          if (edges.length > 0)
+            move = edges[Math.floor(Math.random() * edges.length)];
+        }
+
+        if (move !== -1) {
+          placeMark(move, "O");
+        }
+      }
+
+      function findWinningMove(board, player) {
+        for (let i = 0; i < WIN_LINES.length; i++) {
+          const [a, b, c] = WIN_LINES[i];
+          if (board[a] === player && board[b] === player && board[c] === null)
+            return c;
+          if (board[a] === player && board[c] === player && board[b] === null)
+            return b;
+          if (board[b] === player && board[c] === player && board[a] === null)
+            return a;
+        }
+        return -1;
+      }
+
+      function checkWinResult() {
+        const board = gameState.board;
+        let winner = null;
+        let winningLine = null;
+
+        for (let i = 0; i < WIN_LINES.length; i++) {
+          const [a, b, c] = WIN_LINES[i];
+          if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+            winner = board[a];
+            winningLine = WIN_LINES[i];
+            break;
+          }
+        }
+
+        if (winner) {
+          endGame(winner, winningLine);
+          return true;
+        }
+
+        if (!board.includes(null)) {
+          endGame("DRAW", null);
+          return true;
+        }
+
+        return false;
+      }
+
+      function endGame(result, winningLine) {
+        gameState.isGameOver = true;
+        gameState.ghostMark.visible = false;
+
+        const resultText = document.getElementById("result-text");
+
+        if (result === "X") {
+          gameState.scoreP1++;
+          document.getElementById("score-p1").innerText = gameState.scoreP1;
+          resultText.innerText = "SYSTEM SECURED\nYOU WIN";
+          resultText.className = "magenta-glow";
+        } else if (result === "O") {
+          gameState.scoreCPU++;
+          document.getElementById("score-cpu").innerText = gameState.scoreCPU;
+          resultText.innerText = "SYSTEM BREACHED\nCPU WINS";
+          resultText.className = "cyan-glow";
+        } else {
+          resultText.innerText = "STALEMATE\nDRAW";
+          resultText.className = "";
+          resultText.style.color = "#fff";
+          resultText.style.textShadow = "0 0 10px #fff";
+        }
+
+        // Highlight winning line
+        if (winningLine) {
+          winningLine.forEach((index) => {
+            const cell = gameState.cells[index];
+            // Pulse material
+            cell.material = new THREE.MeshLambertMaterial({
+              color: result === "X" ? 0xff00ff : 0x00ffff,
+              emissive: result === "X" ? 0xaa00aa : 0x00aaaa,
+            });
+          });
+          screenShake = 0.5; // Big shake on win
+        }
+
+        // Show End Screen after delay
+        setTimeout(() => {
+          document.getElementById("end-screen").classList.add("visible");
+        }, 1200);
+      }
+
+      // Exposed functions for HTML buttons
+      window.resetGame = function () {
+        document.getElementById("end-screen").classList.remove("visible");
+
+        // Clear board state
+        gameState.board.fill(null);
+        gameState.isGameOver = false;
+        gameState.turn = "X";
+
+        // Remove 3D marks
+        gameState.marks.forEach((mesh) => scene.remove(mesh));
+        gameState.marks = [];
+
+        // Reset cell materials
+        gameState.cells.forEach((cell) => {
+          cell.material = matBoard;
+        });
+
+        updateUI();
+        screenShake = 0.3; // Shake on reset
+      };
+
+      window.handleInstallClick = function () {
+        // Placeholder CTA functionality
+        console.log("--> Install CTA clicked! Redirecting to app store...");
+        const resultText = document.getElementById("result-text");
+        resultText.innerText = "LOADING PROTOCOL...";
+        resultText.className = "cyan-glow";
+        setTimeout(() => {
+          alert(
+            "This is a playable ad demo.\nImagine redirecting to an App Store now!",
+          );
+          window.resetGame();
+        }, 500);
+      };
+
+      function updateUI() {
+        const turnInd = document.getElementById("turn-indicator");
+        if (gameState.turn === "X") {
+          turnInd.innerText = "P1 [X]";
+          turnInd.className = "hud-value magenta-glow";
+        } else {
+          turnInd.innerText = "CPU [O]";
+          turnInd.className = "hud-value cyan-glow";
+        }
+      }
+
+      // --- ANIMATION LOOP ---
+      let time = 0;
+      function animate() {
+        requestAnimationFrame(animate);
+        time = performance.now();
+
+        // Run custom animations
+        for (let i = gameState.animations.length - 1; i >= 0; i--) {
+          const keepAlive = gameState.animations[i](time);
+          if (!keepAlive) {
+            gameState.animations.splice(i, 1);
+          }
+        }
+
+        // Idle board floating (Sine wave)
+        boardGroup.position.y = Math.sin(time * 0.002) * 0.1;
+        boardGroup.rotation.x = Math.sin(time * 0.001) * 0.02;
+        boardGroup.rotation.z = Math.cos(time * 0.0013) * 0.02;
+
+        // Idle camera wobble
+        const camWobbleX = Math.sin(time * 0.0005) * 0.2;
+        const camWobbleY = Math.cos(time * 0.0004) * 0.2;
+
+        // Apply Screen Shake
+        let shakeX = 0;
+        let shakeY = 0;
+        if (screenShake > 0) {
+          shakeX = (Math.random() - 0.5) * screenShake;
+          shakeY = (Math.random() - 0.5) * screenShake;
+          screenShake *= 0.9; // Decay shake
+          if (screenShake < 0.01) screenShake = 0;
+        }
+
+        camera.position.x = baseCameraPos.x + camWobbleX + shakeX;
+        camera.position.y = baseCameraPos.y + camWobbleY + shakeY;
+        camera.position.z = baseCameraPos.z + shakeX;
+        camera.lookAt(0, 0, 0);
+
+        // Animate ghost mark slightly
+        if (gameState.ghostMark.visible) {
+          gameState.ghostMark.scale.setScalar(1 + Math.sin(time * 0.01) * 0.05);
+        }
+
+        // Slowly rotate background particles
+        particlesMesh.rotation.y = time * 0.00005;
+
+        renderer.render(scene, camera);
+      }
+
+      // Start loop
+      updateUI();
+      animate();
+    </script>
+  </body>
+</html>
